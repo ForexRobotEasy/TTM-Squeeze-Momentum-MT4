@@ -1,0 +1,115 @@
+mql5
+//+------------------------------------------------------------------+
+//|                   TTM Squeeze Momentum MT4                       |
+//|        Developed by Forex Robot Easy Team - forexroboteasy.com   |
+//+------------------------------------------------------------------+
+
+#property copyright 'Forex Robot Easy Team - forexroboteasy.com'
+#property link      'forexroboteasy.com'
+#property version   '1.00'
+#property strict
+
+// Input parameters
+input int Period = 20; // Linear regression period
+input int BollingerBandsPeriod = 20; // Bollinger Bands period
+input double BollingerBandsDeviation = 2.0; // Bollinger Bands deviation
+input int KeltnerBandsPeriod = 20; // Keltner Bands period
+input double KeltnerBandsMultiplier = 1.5; // Keltner Bands multiplier
+
+// Indicator buffers
+double VolatilityBuffer[];
+double SqueezeBuffer[];
+double ExplosiveMoveBuffer[];
+
+//+------------------------------------------------------------------+
+//| Custom indicator initialization function                         |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+    // Indicator buffers mapping
+    SetIndexBuffer(0, VolatilityBuffer);
+    SetIndexBuffer(1, SqueezeBuffer);
+    SetIndexBuffer(2, ExplosiveMoveBuffer);
+
+    // Indicator lines
+    SetIndexStyle(0, DRAW_NONE);
+    SetIndexStyle(1, DRAW_NONE);
+    SetIndexStyle(2, DRAW_NONE);
+
+    // Indicator labels
+    SetIndexLabel(0, 'Volatility');
+    SetIndexLabel(1, 'Squeeze');
+    SetIndexLabel(2, 'Explosive Move');
+
+    // Set up indicator colors
+    SetIndexEmptyValue(0, 0);
+    SetIndexEmptyValue(1, 0);
+    SetIndexEmptyValue(2, 0);
+    SetIndexDrawBegin(0, Period);
+    SetIndexDrawBegin(1, Period);
+    SetIndexDrawBegin(2, Period);
+
+    return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Custom indicator iteration function                              |
+//+------------------------------------------------------------------+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime &time[],
+                const double &open[],
+                const double &high[],
+                const double &low[],
+                const double &close[],
+                const long &tick_volume[],
+                const long &volume[],
+                const int &spread[])
+{
+    // Calculate linear regression
+    ArraySetAsSeries(close, true);
+    ArraySetAsSeries(VolatilityBuffer, true);
+    ArraySetAsSeries(SqueezeBuffer, true);
+    ArraySetAsSeries(ExplosiveMoveBuffer, true);
+    LinearRegression(0, 0, close, Period, VolatilityBuffer);
+
+    // Calculate Bollinger Bands
+    double bollingerBandsUpper[];
+    double bollingerBandsLower[];
+    ArraySetAsSeries(bollingerBandsUpper, true);
+    ArraySetAsSeries(bollingerBandsLower, true);
+    BollingerBands(0, 0, close, BollingerBandsPeriod, BollingerBandsDeviation, MODE_SMA, MODE_UPPER, bollingerBandsUpper);
+    BollingerBands(0, 0, close, BollingerBandsPeriod, BollingerBandsDeviation, MODE_SMA, MODE_LOWER, bollingerBandsLower);
+
+    // Calculate Keltner Bands
+    double keltnerBandsUpper[];
+    double keltnerBandsLower[];
+    ArraySetAsSeries(keltnerBandsUpper, true);
+    ArraySetAsSeries(keltnerBandsLower, true);
+    KeltnerChannels(0, 0, close, KeltnerBandsPeriod, KeltnerBandsMultiplier, MODE_SMA, keltnerBandsUpper, keltnerBandsLower);
+
+    // Identify consolidation periods and explosive moves
+    int limit = rates_total - prev_calculated;
+    for (int i = 0; i < limit; i++)
+    {
+        if (VolatilityBuffer[i] < bollingerBandsUpper[i] - bollingerBandsLower[i] && VolatilityBuffer[i] < keltnerBandsUpper[i] - keltnerBandsLower[i])
+        {
+            SqueezeBuffer[i] = 1.0; // Enter Squeeze zone
+        }
+        else
+        {
+            SqueezeBuffer[i] = 0.0;
+        }
+
+        if (VolatilityBuffer[i] > bollingerBandsUpper[i] - bollingerBandsLower[i] && VolatilityBuffer[i] > keltnerBandsUpper[i] - keltnerBandsLower[i])
+        {
+            ExplosiveMoveBuffer[i] = 1.0; // Onset of explosive move
+        }
+        else
+        {
+            ExplosiveMoveBuffer[i] = 0.0;
+        }
+    }
+
+    return(rates_total);
+}
